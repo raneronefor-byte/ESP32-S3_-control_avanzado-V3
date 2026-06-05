@@ -1,0 +1,19 @@
+CORRECCIÓN PARA GITHUB ACTIONS
+
+Si GitHub muestra "Failure" al crear la APK, sustituye el archivo:
+
+.github/workflows/main.yml
+
+por el main.yml incluido en esta versión.
+
+Cambios de este main.yml:
+- Usa actions/checkout@v6.
+- Usa actions/setup-java@v5.
+- Usa actions/upload-artifact@v7.
+- Evita depender de ./gradlew, porque este proyecto no trae wrapper de Gradle.
+- Instala Gradle 8.10.2 automáticamente.
+- Busca automáticamente settings.gradle aunque el proyecto Android esté dentro de una subcarpeta.
+- Muestra la estructura de carpetas en el log para detectar si el ZIP se subió mal.
+- Compila con --stacktrace para que el error real se vea claramente si algo falla.
+
+La advertencia de Node.js 20 que aparece en GitHub no es el error principal de compilación; es una advertencia de compatibilidad de Actions. Esta versión actualiza las Actions principales a versiones preparadas para Node 24.

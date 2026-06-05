@@ -1,0 +1,44 @@
+COMPROBACIÓN V3 - Control ESP32-S3
+
+Archivos analizados:
+- android/app/src/main/java/com/israel/esp32s3bleremote/MainActivity.java
+- firmware/Sketch_21_Rehecho_FULL_ArduinoDroid_V58C_BLE_Remoto_V2_App.ino
+- AndroidManifest.xml
+- build.gradle
+- .github/workflows/main.yml
+
+Problema detectado en el ZIP original:
+- La app Android original no era la app que se ve en la captura: no tenía sección Cámara, OTA .bin, barras de música ni botones rojo/verde de estado.
+- El sketch sí tenía BLE para WiFi/Web/FTP/Música, pero no enviaba por BLE todos los estados que la app V3 necesita para colorear correctamente todos los botones.
+- El sketch no tenía comandos BLE directos para activar/parar la cámara web desde la app.
+- La app original solo enviaba botones simples y no interpretaba el estado completo para mantener sincronizados WiFi/Web/FTP.
+
+Cambios hechos en la app:
+- Nombre de app: Control ESP32-S3.
+- UI rehecha manteniendo la estética de la captura: fondo claro, botones grises y botones rojo/verde.
+- Reconexión automática BLE al último ESP32-S3 usado.
+- Botones WiFi/Web/FTP/Cámara sincronizados con STATUS del ESP32.
+- Sección Cámara con WebView para stream MJPEG desde http://IP:81/stream.
+- Guardar foto en Descargas usando http://IP:81/capture.
+- OTA .bin mediante navegador interno y subida multipart a /update?key=esp32ota.
+- Barras de progreso de canción y volumen.
+- Navegador interno para .bin con acceso a Descargas y opción de permiso de archivos en Android 11+.
+
+Cambios hechos en el sketch:
+- STATUS ahora incluye: wifi, ip, web, ftp, cam, music, folder, track, cur, dur, vol, bat.
+- Comandos nuevos: CAM_ON, CAM_OFF, CAMERA_ON, CAMERA_OFF, VOLUME_SET:n, SEEK_PERCENT:n, MUSIC_STATUS.
+- CAM_ON activa WiFi si hace falta, activa Web/OTA, inicia cámara web y notifica CAM|ON|IP.
+- CAM_OFF para el servidor de cámara, libera cámara y notifica CAM|OFF.
+- VOL_UP/VOL_DOWN ahora devuelven STATUS además de VOLUME.
+- Play/Pausa, Stop, Siguiente y Anterior devuelven STATUS para que la app actualice barras y texto.
+
+Comprobaciones realizadas en entorno local:
+- ZIP original descomprimido e inspeccionado.
+- Comparado protocolo BLE de app y sketch.
+- Corregida discordancia entre UI de captura y MainActivity original.
+- XML validado con parser XML.
+- MainActivity revisado con javac para detectar errores de sintaxis; solo aparecen errores esperados por no tener android.jar en el entorno local.
+- Sketch revisado por equilibrio de llaves/paréntesis/corchetes tras modificaciones.
+
+Limitación honesta:
+- En este entorno no hay Android SDK ni Arduino/ESP32 core instalados, por lo que no he podido ejecutar una compilación real de Gradle ni una compilación real del sketch contra las librerías de ESP32. El repositorio queda preparado para que GitHub Actions compile la APK.
