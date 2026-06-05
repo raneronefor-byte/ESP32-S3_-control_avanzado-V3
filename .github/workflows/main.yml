@@ -1,0 +1,168 @@
+name: Crear APK Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compilar APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v6
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Mostrar estructura y localizar proyecto Android
+        id: android_project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Contenido encontrado en el repositorio:"
+          find . -maxdepth 5 -type f | sort | sed 's#^./##'
+
+          SETTINGS_FILE="$(find . -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) | head -n 1 || true)"
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "::error::No se encontró settings.gradle ni settings.gradle.kts. El proyecto Android no está completo o no está subido en la estructura correcta."
+            exit 1
+          fi
+
+          ANDROID_DIR="$(dirname "$SETTINGS_FILE")"
+
+          echo "Proyecto Android encontrado en: $ANDROID_DIR"
+          echo "dir=$ANDROID_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Preparar Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          ANDROID_SDK_ROOT="$ANDROID_HOME"
+
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+
+          SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | sort -V | tail -n 1 || true)"
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::No se encontró sdkmanager dentro de $ANDROID_HOME"
+            echo "Buscando contenido del SDK:"
+            find "$ANDROID_HOME" -maxdepth 5 -type f 2>/dev/null | sort || true
+            exit 1
+          fi
+
+          echo "sdkmanager encontrado en: $SDKMANAGER"
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Instalar Gradle de respaldo
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ANDROID_DIR="${{ steps.android_project.outputs.dir }}"
+
+          if [ -f "$ANDROID_DIR/gradlew" ]; then
+            echo "El proyecto ya tiene gradlew. No hace falta instalar Gradle global."
+            chmod +x "$ANDROID_DIR/gradlew"
+            exit 0
+          fi
+
+          echo "No se encontró gradlew. Instalando Gradle 8.10.2 de respaldo."
+
+          curl -L --retry 3 https://services.gradle.org/distributions/gradle-8.10.2-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d "$HOME/gradle"
+          echo "$HOME/gradle/gradle-8.10.2/bin" >> "$GITHUB_PATH"
+
+      - name: Comprobar herramientas
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Java:"
+          java -version
+
+          echo ""
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          echo ""
+          echo "Buscando sdkmanager:"
+          find "$ANDROID_HOME" -type f -name sdkmanager | sort || true
+
+          echo ""
+          echo "Buscando Gradle:"
+          if command -v gradle >/dev/null 2>&1; then
+            gradle --version
+          else
+            echo "Gradle global no instalado. Se usará gradlew si existe."
+          fi
+
+      - name: Compilar APK Debug
+        working-directory: ${{ steps.android_project.outputs.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            gradle assembleDebug --no-daemon --stacktrace
+          fi
+
+      - name: Localizar APK generada
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ANDROID_DIR="${{ steps.android_project.outputs.dir }}"
+
+          echo "Buscando APK dentro de: $ANDROID_DIR"
+
+          APK_FILE="$(find "$ANDROID_DIR" -type f -path "*/build/outputs/apk/*/*.apk" | head -n 1 || true)"
+
+          if [ -z "$APK_FILE" ]; then
+            APK_FILE="$(find "$ANDROID_DIR" -type f -name "*.apk" | head -n 1 || true)"
+          fi
+
+          if [ -z "$APK_FILE" ]; then
+            echo "::error::La compilación terminó, pero no se encontró ningún archivo .apk."
+            find "$ANDROID_DIR" -maxdepth 8 -type f | sort || true
+            exit 1
+          fi
+
+          echo "APK encontrada: $APK_FILE"
+          echo "file=$APK_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Subir APK como artefacto
+        uses: actions/upload-artifact@v7
+        with:
+          name: Control-ESP32-S3-debug-apk
+          path: ${{ steps.apk.outputs.file }}
